@@ -35,7 +35,7 @@ const queryChat = async (payload) => {
     throw new Error("userId and query are required");
   }
 
-  const existingUser = await User.findOne({ userId });
+  const existingUser = await User.findById(userId);
 
   if (!existingUser) {
     throw new Error("User not found");
@@ -64,24 +64,16 @@ const queryChat = async (payload) => {
     });
   }
 
-  const userMessage = await Message.create({
+  const chatEntry = await Message.create({
     userId,
     sessionId: activeSession._id,
-    role: "user",
-    content: prompt,
-  });
-
-  const assistantMessage = await Message.create({
-    userId,
-    sessionId: activeSession._id,
-    role: "assistant",
-    content: "Query received. AI response integration is pending.",
+    query: prompt,
+    response: "Query received. AI response integration is pending.",
   });
 
   return {
     session: activeSession,
-    userMessage,
-    assistantMessage,
+    message: chatEntry,
   };
 };
 

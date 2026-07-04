@@ -4,7 +4,7 @@ const getHistory = async (req, res) => {
   try {
     const history = await chatService.getHistory(
       req.params.sessionId,
-      req.user.userId,
+      req.user.id,
     );
 
     return res.status(200).json({
@@ -23,7 +23,7 @@ const queryChat = async (req, res) => {
   try {
     const result = await chatService.queryChat({
       ...req.body,
-      userId: req.user.userId,
+      userId: req.user.id,
     });
 
     return res.status(201).json({

@@ -5,24 +5,23 @@ const messageSchema = new mongoose.Schema(
     userId: {
       type: String,
       required: true,
-      index: true
+      index: true,
     },
     sessionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Session",
-      required: true
+      required: true,
     },
-    role: {
+    query: {
       type: String,
-      enum: ["user", "assistant"],
-      required: true
+      required: true,
     },
-    content: {
+    response: {
       type: String,
-      required: true
-    }
+      required: true,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("Message", messageSchema);

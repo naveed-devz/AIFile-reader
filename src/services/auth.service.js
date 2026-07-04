@@ -1,5 +1,3 @@
-const mongoose = require("mongoose");
-
 const User = require("../models/user.model");
 const {
   hashPassword,
@@ -9,7 +7,6 @@ const {
 
 const sanitizeUser = (user) => ({
   id: user._id,
-  userId: user.userId,
   name: user.name,
   email: user.email,
   createdAt: user.createdAt,
@@ -35,15 +32,13 @@ const registerUser = async (payload) => {
   }
 
   const user = await User.create({
-    userId: new mongoose.Types.ObjectId().toString(),
-    name: name ? name.trim() : "",
+    name: name ? name.trim() : "User",
     email: normalizedEmail,
-    passwordHash: await hashPassword(password),
+    password: await hashPassword(password),
   });
 
   const token = generateToken({
     id: user._id.toString(),
-    userId: user.userId,
     email: user.email,
   });
 
@@ -67,7 +62,7 @@ const loginUser = async (payload) => {
     throw new Error("Invalid email or password");
   }
 
-  const isPasswordValid = await verifyPassword(password, user.passwordHash);
+  const isPasswordValid = await verifyPassword(password, user.password);
 
   if (!isPasswordValid) {
     throw new Error("Invalid email or password");
@@ -75,7 +70,6 @@ const loginUser = async (payload) => {
 
   const token = generateToken({
     id: user._id.toString(),
-    userId: user.userId,
     email: user.email,
   });
 

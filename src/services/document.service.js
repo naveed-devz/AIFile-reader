@@ -15,7 +15,7 @@ const uploadDocument = async (payload) => {
     throw new Error("Invalid sessionId");
   }
 
-  const existingUser = await User.findOne({ userId });
+  const existingUser = await User.findById(userId);
 
   if (!existingUser) {
     throw new Error("User not found");

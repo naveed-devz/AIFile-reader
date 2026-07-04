@@ -4,7 +4,7 @@ const uploadDocument = async (req, res) => {
   try {
     const document = await documentService.uploadDocument({
       ...req.body,
-      userId: req.user.userId,
+      userId: req.user.id,
     });
 
     return res.status(201).json({
@@ -24,7 +24,7 @@ const getDocuments = async (req, res) => {
   try {
     const documents = await documentService.getDocuments({
       ...req.query,
-      userId: req.user.userId,
+      userId: req.user.id,
     });
 
     return res.status(200).json({
