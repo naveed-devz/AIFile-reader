@@ -4,6 +4,8 @@ const { PDFParse } = require("pdf-parse");
 const User = require("../models/user.model");
 const Session = require("../models/session.model");
 const Document = require("../models/document.model");
+const { embedTexts, assertGeminiConfigured } = require("./ai.service");
+const { isPineconeConfigured, upsertVectors } = require("./vector.service");
 
 const normalizeText = (text = "") => text.replace(/\s+/g, " ").trim();
 
@@ -145,6 +147,7 @@ const uploadDocument = async (payload) => {
   await validateUser(userId);
   await validateSession(userId, sessionId);
   await validateFile(file);
+  assertGeminiConfigured();
 
   const extractedDocument = await extractDocument(file);
   const chunks = chunkText(extractedDocument.text);
@@ -154,6 +157,29 @@ const uploadDocument = async (payload) => {
   }
 
   const pineconeNamespace = `${userId}:${sessionId}`;
+
+  if (isPineconeConfigured()) {
+    const embeddings = await embedTexts(
+      chunks.map((chunk) => chunk.content),
+      "RETRIEVAL_DOCUMENT",
+      file.originalname,
+    );
+
+    await upsertVectors({
+      namespace: pineconeNamespace,
+      vectors: chunks.map((chunk, index) => ({
+        id: `${sessionId}:${index}`,
+        values: embeddings[index],
+        metadata: {
+          userId,
+          sessionId,
+          fileName: file.originalname,
+          chunkIndex: chunk.index,
+          content: chunk.content,
+        },
+      })),
+    });
+  }
 
   const document = await saveDocument({
     userId,
@@ -196,4 +222,5 @@ module.exports = {
   uploadDocument,
   getDocuments,
   chunkText,
+  normalizeText,
 };

@@ -4,6 +4,8 @@ const Message = require("../models/message.model");
 const Session = require("../models/session.model");
 const User = require("../models/user.model");
 const Document = require("../models/document.model");
+const { embedTexts, generateAnswer, assertGeminiConfigured } = require("./ai.service");
+const { isPineconeConfigured, queryVectors } = require("./vector.service");
 
 const tokenize = (text = "") =>
   text
@@ -55,6 +57,34 @@ const buildDocumentResponse = (prompt, relevantChunks) => {
   return `Here is the most relevant information I found for "${prompt}":\n\n${context}`;
 };
 
+const getMongoRelevantChunks = (documents, prompt) =>
+  findRelevantChunks(documents, prompt).map((chunk) => ({
+    fileName: chunk.fileName,
+    content: chunk.content,
+    score: chunk.score,
+  }));
+
+const getPineconeRelevantChunks = async (namespace, prompt) => {
+  if (!isPineconeConfigured()) {
+    return [];
+  }
+
+  const [queryEmbedding] = await embedTexts([prompt], "RETRIEVAL_QUERY", "User Query");
+  const result = await queryVectors({
+    namespace,
+    vector: queryEmbedding,
+    topK: 5,
+  });
+
+  return (result.matches || [])
+    .filter((match) => match.metadata?.content)
+    .map((match) => ({
+      fileName: match.metadata.fileName || "Document",
+      content: match.metadata.content,
+      score: match.score || 0,
+    }));
+};
+
 const getHistory = async (sessionId, userId) => {
   if (!mongoose.Types.ObjectId.isValid(sessionId)) {
     throw new Error("Invalid sessionId");
@@ -85,6 +115,7 @@ const queryChat = async (payload) => {
   if (!userId || !prompt) {
     throw new Error("userId and query are required");
   }
+  assertGeminiConfigured();
 
   const existingUser = await User.findById(userId);
 
@@ -119,9 +150,21 @@ const queryChat = async (payload) => {
     userId,
     sessionId: activeSession._id,
   });
+  const namespace = `${userId}:${activeSession._id}`;
 
-  const relevantChunks = findRelevantChunks(documents, prompt);
-  const response = buildDocumentResponse(prompt, relevantChunks);
+  let relevantChunks = await getPineconeRelevantChunks(namespace, prompt);
+
+  if (relevantChunks.length === 0) {
+    relevantChunks = getMongoRelevantChunks(documents, prompt);
+  }
+
+  const response =
+    relevantChunks.length === 0
+      ? buildDocumentResponse(prompt, relevantChunks)
+      : await generateAnswer({
+          question: prompt,
+          contextChunks: relevantChunks,
+        });
 
   const chatEntry = await Message.create({
     userId,

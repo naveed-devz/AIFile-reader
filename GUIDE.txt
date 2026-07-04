@@ -1,0 +1,188 @@
+RAG Backend Guide
+=================
+
+Overview
+--------
+This backend currently supports:
+- user registration and login
+- protected document upload
+- PDF text extraction
+- chunking document text
+- Gemini embeddings for document chunks and user queries
+- Pinecone dense vector storage and retrieval
+- Gemini answer generation from retrieved chunks
+- chat history storage in MongoDB
+
+Current Architecture
+--------------------
+1. User logs in and gets a bearer token.
+2. User creates or uses a chat session.
+3. User uploads a PDF with a sessionId.
+4. Backend:
+   - validates user and session
+   - extracts PDF text
+   - splits text into chunks
+   - stores document metadata + chunks in MongoDB
+   - generates Gemini embeddings for chunks
+   - stores vectors in Pinecone
+5. User sends a question to /api/chat/query
+6. Backend:
+   - embeds the user query with Gemini
+   - queries Pinecone for relevant chunks
+   - falls back to Mongo chunk matching if needed
+   - sends retrieved context to Gemini
+   - stores the final response in MongoDB
+
+Important Files
+---------------
+- server.js
+  Loads dotenv before app startup.
+
+- src/services/ai.service.js
+  Gemini embedding and answer generation logic.
+
+- src/services/vector.service.js
+  Pinecone vector upsert/query logic using the official Pinecone SDK.
+
+- src/services/document.service.js
+  Upload flow, PDF extraction, chunking, Mongo save, Pinecone upsert.
+
+- src/services/chat.service.js
+  Query flow, Pinecone retrieval, Gemini final answer, chat history save.
+
+- src/middlewares/upload.middleware.js
+  Multer config for PDF/DOCX upload. Current size limit is 20 MB.
+
+Environment Variables
+---------------------
+Required:
+- PORT
+- MONGODB_URI
+- GOOGLE_API_KEY
+- PINECONE_API_KEY
+- PINECONE_INDEX_NAME
+
+Recommended:
+- GEMINI_MODEL=gemini-2.0-flash
+- GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+- GEMINI_EMBEDDING_DIMENSIONS=768
+
+Suggested .env example:
+
+PORT=5000
+MONGODB_URI=your_mongodb_uri
+GOOGLE_API_KEY=your_google_api_key
+PINECONE_API_KEY=your_pinecone_api_key
+PINECONE_INDEX_NAME=your_dense_index_name
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+GEMINI_EMBEDDING_DIMENSIONS=768
+
+Pinecone Settings
+-----------------
+For the current code, create a Pinecone index with:
+- Vector type: Dense
+- Metric: Cosine
+- Dimension: 768
+- Cloud/Region: AWS us-east-1 on Starter/free
+
+Why 768?
+- The backend trims Gemini embeddings to 768 dimensions.
+- Your Pinecone index dimension must match that.
+
+Current API Flow
+----------------
+Auth:
+- POST /api/auth/register
+- POST /api/auth/login
+- GET /api/auth/me
+
+Documents:
+- POST /api/document/upload
+- GET /api/document
+
+Chat:
+- POST /api/chat/query
+- GET /api/chat/history/:sessionId
+
+How to Upload a Document
+------------------------
+Route:
+- POST /api/document/upload
+
+Headers:
+- Authorization: Bearer <token>
+
+Body type:
+- form-data
+
+Fields:
+- sessionId: text
+- file: file
+
+Supported file types right now:
+- PDF works for extraction/query
+- DOCX upload is allowed by multer, but DOCX extraction is not implemented yet
+
+How to Query a Document
+-----------------------
+Route:
+- POST /api/chat/query
+
+Headers:
+- Authorization: Bearer <token>
+
+Body type:
+- raw JSON
+
+Example:
+{
+  "sessionId": "your_session_id",
+  "query": "What is this document about?"
+}
+
+Known Working Behavior
+----------------------
+- PDF upload
+- Mongo save
+- Gemini embedding
+- Pinecone dense upsert/query
+- Gemini answer generation
+
+Known Limitations
+-----------------
+- DOCX text extraction is not implemented
+- No advanced chunk ranking beyond Pinecone retrieval + Gemini synthesis
+- No deletion flow for documents/vectors yet
+- No retry/backoff logic for external API failures yet
+
+Common Errors and Fixes
+-----------------------
+1. "GOOGLE_API_KEY is required for Gemini features"
+   - Make sure GOOGLE_API_KEY is in .env
+   - Restart the server after editing .env
+
+2. "Vector dimension 3072 does not match the dimension of the index 768"
+   - Use GEMINI_EMBEDDING_DIMENSIONS=768
+   - Create Pinecone dense index with dimension 768
+
+3. Pinecone 404 index error
+   - Set the correct PINECONE_INDEX_NAME in .env
+
+4. "Upserting dense vectors is not supported for sparse indexes"
+   - Use a dense Pinecone index, not sparse
+
+How to Run
+----------
+1. Add .env values
+2. Start MongoDB if needed
+3. Run:
+   npm run dev
+
+Next Good Improvements
+----------------------
+- add DOCX text extraction
+- add delete document + delete Pinecone vectors
+- add better error handling around Gemini/Pinecone
+- add tests for upload/query flow
+- add response citations with chunk references
