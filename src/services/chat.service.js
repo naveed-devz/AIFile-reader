@@ -72,8 +72,12 @@ const queryChat = async (payload) => {
   });
 
   return {
-    session: activeSession,
-    message: chatEntry,
+    sessionId: activeSession._id,
+    title: activeSession.title,
+    messageId: chatEntry._id,
+    query: chatEntry.query,
+    response: chatEntry.response,
+    createdAt: chatEntry.createdAt,
   };
 };
 
