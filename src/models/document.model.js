@@ -25,6 +25,22 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    extractedText: {
+      type: String,
+      default: "",
+    },
+    chunks: [
+      {
+        index: {
+          type: Number,
+          required: true,
+        },
+        content: {
+          type: String,
+          required: true,
+        },
+      },
+    ],
     pageCount: {
       type: Number,
       default: 0,

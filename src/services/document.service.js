@@ -1,8 +1,67 @@
 const mongoose = require("mongoose");
+const { PDFParse } = require("pdf-parse");
 
 const User = require("../models/user.model");
 const Session = require("../models/session.model");
 const Document = require("../models/document.model");
+
+const normalizeText = (text = "") => text.replace(/\s+/g, " ").trim();
+
+const chunkText = (text) => {
+  const normalizedText = normalizeText(text);
+
+  if (!normalizedText) {
+    return [];
+  }
+
+  const words = normalizedText.split(" ");
+  const chunkSize = 180;
+  const overlap = 30;
+  const chunks = [];
+
+  for (let start = 0; start < words.length; start += chunkSize - overlap) {
+    const content = words.slice(start, start + chunkSize).join(" ").trim();
+
+    if (!content) {
+      continue;
+    }
+
+    chunks.push({
+      index: chunks.length,
+      content,
+    });
+
+    if (start + chunkSize >= words.length) {
+      break;
+    }
+  }
+
+  return chunks;
+};
+
+const extractDocument = async (file) => {
+  if (file.mimetype === "application/pdf") {
+    const parser = new PDFParse({ data: file.buffer });
+    const parsedPdf = await parser.getText();
+    await parser.destroy();
+
+    return {
+      text: normalizeText(parsedPdf.text),
+      pageCount: parsedPdf.total || 0,
+    };
+  }
+
+  if (
+    file.mimetype ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    throw new Error(
+      "DOCX querying is not enabled yet. PDF querying works now, and DOCX needs a parser package.",
+    );
+  }
+
+  throw new Error("Unsupported document type");
+};
 
 const validateUser = async (userId) => {
   if (!userId) {
@@ -45,6 +104,10 @@ const validateFile = async (file) => {
     throw new Error("Document file is required");
   }
 
+  if (!file.buffer || file.buffer.length === 0) {
+    throw new Error("Uploaded file is empty");
+  }
+
   return file;
 };
 
@@ -55,6 +118,8 @@ const saveDocument = async (payload) => {
     fileName,
     fileType,
     pineconeNamespace,
+    extractedText,
+    chunks,
     pageCount,
     chunkCount,
   } = payload;
@@ -65,6 +130,8 @@ const saveDocument = async (payload) => {
     fileName,
     fileType,
     pineconeNamespace,
+    extractedText,
+    chunks,
     pageCount,
     chunkCount,
   });
@@ -79,6 +146,13 @@ const uploadDocument = async (payload) => {
   await validateSession(userId, sessionId);
   await validateFile(file);
 
+  const extractedDocument = await extractDocument(file);
+  const chunks = chunkText(extractedDocument.text);
+
+  if (chunks.length === 0) {
+    throw new Error("No readable text was found in this document");
+  }
+
   const pineconeNamespace = `${userId}:${sessionId}`;
 
   const document = await saveDocument({
@@ -87,8 +161,10 @@ const uploadDocument = async (payload) => {
     fileName: file.originalname,
     fileType: file.mimetype,
     pineconeNamespace,
-    pageCount: 0,
-    chunkCount: 0,
+    extractedText: extractedDocument.text,
+    chunks,
+    pageCount: extractedDocument.pageCount,
+    chunkCount: chunks.length,
   });
 
   return document;
@@ -111,10 +187,13 @@ const getDocuments = async (filters = {}) => {
     query.sessionId = filters.sessionId;
   }
 
-  return Document.find(query).sort({ createdAt: -1 });
+  return Document.find(query)
+    .select("-extractedText -chunks")
+    .sort({ createdAt: -1 });
 };
 
 module.exports = {
   uploadDocument,
   getDocuments,
+  chunkText,
 };

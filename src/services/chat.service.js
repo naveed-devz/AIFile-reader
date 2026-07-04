@@ -3,6 +3,57 @@ const mongoose = require("mongoose");
 const Message = require("../models/message.model");
 const Session = require("../models/session.model");
 const User = require("../models/user.model");
+const Document = require("../models/document.model");
+
+const tokenize = (text = "") =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+
+const findRelevantChunks = (documents, prompt) => {
+  const queryTokens = tokenize(prompt);
+  const scoredChunks = [];
+
+  for (const document of documents) {
+    for (const chunk of document.chunks || []) {
+      const chunkTokens = tokenize(chunk.content);
+      let score = 0;
+
+      for (const token of queryTokens) {
+        if (chunkTokens.includes(token)) {
+          score += 1;
+        }
+      }
+
+      if (score > 0) {
+        scoredChunks.push({
+          score,
+          fileName: document.fileName,
+          content: chunk.content,
+        });
+      }
+    }
+  }
+
+  return scoredChunks.sort((a, b) => b.score - a.score).slice(0, 3);
+};
+
+const buildDocumentResponse = (prompt, relevantChunks) => {
+  if (relevantChunks.length === 0) {
+    return `I could not find a matching answer in the uploaded documents for: "${prompt}". Try a more specific question or upload a readable PDF.`;
+  }
+
+  const context = relevantChunks
+    .map(
+      (chunk, index) =>
+        `Source ${index + 1} (${chunk.fileName}): ${chunk.content}`,
+    )
+    .join("\n\n");
+
+  return `Here is the most relevant information I found for "${prompt}":\n\n${context}`;
+};
 
 const getHistory = async (sessionId, userId) => {
   if (!mongoose.Types.ObjectId.isValid(sessionId)) {
@@ -64,11 +115,19 @@ const queryChat = async (payload) => {
     });
   }
 
+  const documents = await Document.find({
+    userId,
+    sessionId: activeSession._id,
+  });
+
+  const relevantChunks = findRelevantChunks(documents, prompt);
+  const response = buildDocumentResponse(prompt, relevantChunks);
+
   const chatEntry = await Message.create({
     userId,
     sessionId: activeSession._id,
     query: prompt,
-    response: "Query received. AI response integration is pending.",
+    response,
   });
 
   return {
@@ -78,6 +137,10 @@ const queryChat = async (payload) => {
     query: chatEntry.query,
     response: chatEntry.response,
     createdAt: chatEntry.createdAt,
+    sources: relevantChunks.map((chunk) => ({
+      fileName: chunk.fileName,
+      preview: chunk.content.slice(0, 220),
+    })),
   };
 };
 
