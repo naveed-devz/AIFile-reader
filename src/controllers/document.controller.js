@@ -3,8 +3,9 @@ const documentService = require("../services/document.service");
 const uploadDocument = async (req, res) => {
   try {
     const document = await documentService.uploadDocument({
-      ...req.body,
       userId: req.user.id,
+      sessionId: req.body.sessionId,
+      file: req.file,
     });
 
     return res.status(201).json({
